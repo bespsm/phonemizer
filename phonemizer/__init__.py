@@ -32,4 +32,4 @@ if __PHONEMIZER_SETUP__:  # pragma: nocover
     sys.stderr.write(
         'Partial import of phonemizer during the build process.\n')
 else:
-    from .phonemize import phonemize
+    from .phonemize import Phonemizer, phonemize
