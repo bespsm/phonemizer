@@ -22,6 +22,7 @@ import re
 import shlex
 import subprocess
 import tempfile
+from phonemizer.backend.espeakffi import init, set_voice_by_name, text_to_phonemes
 
 import joblib
 
@@ -171,6 +172,10 @@ class EspeakBackend(BaseEspeakBackend):
 
         self._with_stress = with_stress
 
+        # espeak ffi init
+        init()
+        set_voice_by_name(language)
+
     @staticmethod
     def name():
         return 'espeak'
@@ -234,56 +239,17 @@ class EspeakBackend(BaseEspeakBackend):
         return self._phonemize_postprocess(
             text, text_type, punctuation_marks)
 
-    def _command(self, fname):
-        return (
-            f'{self.espeak_path()} -v{self.language} {self.ipa} '
-            f'-q -f {fname} {self.sep}')
-
     def _phonemize_aux(self, text, separator, strip):
         output = []
         lang_switch_list = []
         for num, line in enumerate(text.split('\n'), start=1):
-            with tempfile.NamedTemporaryFile(
-                    'w+', encoding='utf8', delete=False) as data:
-                try:
-                    # save the text as a tempfile
-                    data.write(line)
-                    data.close()
+            line = text_to_phonemes(line, ipa=True)
+            line, lang_switch = self._postprocess_line(
+            line, separator, strip)
+            output.append(line)
 
-                    # generate the espeak command to run
-                    command = self._command(data.name)
-                    if self.logger:
-                        self.logger.debug('running %s', command)
-
-                    # run the command
-                    completed = subprocess.run(
-                        shlex.split(command, posix=False),
-                        check=False,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE)
-
-                    # retrieve the output line (raw phonemization)
-                    line = completed.stdout.decode('utf8')
-
-                    # ensure all was OK
-                    error = completed.stderr.decode('utf8')
-                    for err_line in error.split('\n'):  # pragma: nocover
-                        err_line = err_line.strip()
-                        if err_line:
-                            self.logger.error(err_line)
-                    if error or completed.returncode:  # pragma: nocover
-                        raise RuntimeError(
-                            f'espeak failed with return code '
-                            f'{completed.returncode}')
-                finally:
-                    os.remove(data.name)
-
-                line, lang_switch = self._postprocess_line(
-                    line, separator, strip)
-                output.append(line)
-
-                if lang_switch:
-                    lang_switch_list.append(num)
+            if lang_switch:
+                lang_switch_list.append(num)
 
         return output, lang_switch_list
 
